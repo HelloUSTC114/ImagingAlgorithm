@@ -30,7 +30,7 @@ using namespace std;
 const static double PI = TMath::Pi();
 // const static double PI = 3.14159265358;
 
-const Float_t ANGLE_LIMITED = 0.01;            // rad, Angle Limit
+const Float_t ANGLE_LIMITED = 0.01;             // rad, Angle Limit
 const Int_t BIN_X = 30, BIN_Y = 10, BIN_Z = 10; //
 const Float_t X_START = -20., X_END = 20.0;     // cm
 const Float_t Y_START = -20., Y_END = 20.;      // cm
@@ -42,7 +42,7 @@ class PoCAManager
 public:
     PoCAManager();
     ~PoCAManager();
-    bool Init(const POCAType::Point3 &pi, const POCAType::Point3 &pf, int nbinsX, int nbinsY, int nbinsZ);
+    bool Init(const POCAType::Point3 &pi, const POCAType::Point3 &pf, int nbinsX, int nbinsY, int nbinsZ); // Unit: cm
     void Clear();
 
     long GetVoxelID(POCAType::Index3 &idx, const POCAType::Point3 &pNow);
@@ -52,14 +52,18 @@ public:
     // pi is incident point, pf is shooting point
     bool CalcPath(const POCAType::Point3 &pi, const POCAType::Point3 &pf, float *ev_path);
     double CalcPoCA(TVector3 &pPoCA, const TVector3 *vPos);
-    double CalcPoCA(TVector3 &pPoCA, const TImagingData & posData);
+    double CalcPoCA(TVector3 &pPoCA, const TImagingData &posData);
+
+    static bool sCalcPoCA(TVector3 &pPoCA, TVector3 &pcout, TVector3 &qcout, const TVector3 *vPos);
+    static bool sCalcPoCA(TVector3 &pPoCA, TVector3 &pcout, TVector3 &qcout, const TImagingData &posData);
 
     bool CheckPointInside(const POCAType::Point3 &pNow);
 
     // Size for each voxel
-    double dX() { return (fXf - fXi) / (double)fNbinsX; }
-    double dY() { return (fYf - fYi) / (double)fNbinsY; }
-    double dZ() { return (fZf - fZi) / (double)fNbinsZ; }
+    double dX() { return TMath::Abs((fXf - fXi) / (double)fNbinsX); }
+    double dY() { return TMath::Abs((fYf - fYi) / (double)fNbinsY); }
+    double dZ() { return TMath::Abs((fZf - fZi) / (double)fNbinsZ); }
+    double dL() { return TMath::Sqrt(dX() * dX() + dY() * dY() + dZ() * dZ()); }
     // Minimum/Maximum for each dimension
     double XMax() { return POCAType::max(fXi, fXf); }
     double YMax() { return POCAType::max(fYi, fYf); }
@@ -84,13 +88,12 @@ public:
     const float *GetDensityArray() { return fDensityArray; }
     const long *GetMuCountArray() { return fMuCountArray; }
 
-    ostream &Show(ostream & os);
+    ostream &Show(ostream &os);
 
-    static PoCAManager*& CurrentPoCAManager();
+    static PoCAManager *&CurrentPoCAManager();
 
-    bool WriteResult(TFile *file = NULL);
-    bool WritePath(TFile *file);
-
+    TFile *WriteResult(TFile *file = NULL);
+    TFile *WritePath(TFile *file);
 
 private:
     // POCAType::Point3

@@ -200,6 +200,76 @@ bool PoCAManager::CalcPath(const Point3 &pi, const Point3 &pf, float *ev_path)
     return true;
 }
 
+double PoCAManager::CalcPoCA(TVector3 &pPoCA, const TImagingData &posData)
+{
+    const TVector3 vPos[4]{posData.I1(), posData.I2(), posData.O1(), posData.O2()};
+    return CalcPoCA(pPoCA, vPos);
+}
+
+bool PoCAManager::sCalcPoCA(TVector3 &pPoCA, TVector3 &pcout, TVector3 &qcout, const TVector3 *vPos)
+{
+    const TVector3 &p0 = vPos[0];
+    const TVector3 &p1 = vPos[1];
+    const TVector3 &q0 = vPos[2];
+    const TVector3 &q1 = vPos[3];
+
+    TVector3 u = p1 - p0;
+    TVector3 v = q1 - q0;
+    TVector3 w = p0 - q0;
+
+    Float_t angle = u.Angle(v);
+    angle = std::atan(v.X() / v.Z()) - std::atan(u.X() / u.Z());
+    // if (fabs(angle) > ANGLE_LIMITED)
+    Float_t a = u * u;
+    Float_t b = u * v;
+    Float_t c = v * v;
+    Float_t d = u * w;
+    Float_t e = v * w;
+
+    TVector3 pc = p0 + ((b * e - c * d) / (a * c - b * b)) * u;
+    TVector3 qc = q0 + ((a * e - b * d) / (a * c - b * b)) * v;
+
+    pcout = pc;
+    qcout = qc;
+
+    pPoCA.SetX(pc.x() / 2.0 + qc.x() / 2.0);
+    pPoCA.SetY(pc.y() / 2.0 + qc.y() / 2.0);
+    pPoCA.SetZ(pc.z() / 2.0 + qc.z() / 2.0);
+
+    bool flag = 1;
+
+    // Judge whether z of pPoCA is inside valid region
+    double z1, z2;
+    if (vPos[0].z() > vPos[3].z())
+    {
+        z1 = TMath::Min(vPos[0].z(), vPos[1].z());
+        z2 = TMath::Max(vPos[2].z(), vPos[3].z());
+    }
+    else if (vPos[0].z() < vPos[3].z())
+    {
+        z1 = TMath::Max(vPos[0].z(), vPos[1].z());
+        z2 = TMath::Min(vPos[2].z(), vPos[3].z());
+    }
+    else
+    {
+        flag = 0;
+        return flag;
+    }
+
+    if (pPoCA.z() < TMath::Max(z1, z2) && pPoCA.z() > TMath::Min(z1, z2))
+        flag = 1;
+    else
+        flag = 0;
+
+    return flag;
+}
+
+bool PoCAManager::sCalcPoCA(TVector3 &pPoCA, TVector3 &pcout, TVector3 &qcout, const TImagingData &posData)
+{
+    const TVector3 vPos[4]{posData.I1(), posData.I2(), posData.O1(), posData.O2()};
+    return sCalcPoCA(pPoCA, pcout, qcout, vPos);
+}
+
 double PoCAManager::CalcPoCA(TVector3 &pPoCA, const TVector3 *vPos)
 {
     const TVector3 &p0 = vPos[0];
@@ -232,11 +302,12 @@ double PoCAManager::CalcPoCA(TVector3 &pPoCA, const TVector3 *vPos)
         pPoCA.SetZ(pc.z() / 2.0 + qc.z() / 2.0);
 
         Long_t voxelID = GetVoxelID(pPoCA);
-        pc.Print();
-        qc.Print();
-        p0.Print();
-        (((b * e - c * d) / (a * c - b * b)) * u).Print();
+        // pc.Print();
+        // qc.Print();
+        // p0.Print();
+        // (((b * e - c * d) / (a * c - b * b)) * u).Print();
 
+        // If pc or qc or poca is outside valid zone, 
         if (voxelID < 0 || GetVoxelID(pc) < 0 || GetVoxelID(qc) < 0)
             return -angle;
 
@@ -244,18 +315,25 @@ double PoCAManager::CalcPoCA(TVector3 &pPoCA, const TVector3 *vPos)
         CalcPath(pc, qc, fPathArray);
         CalcPath(qc, q0, fPathArray);
 
-        Float_t dL = (Z_END - Z_START) / BIN_Z; //fPathArray[voxelID];
-        if (dL < 0.1)
-            dL = 0.1;
-        fDensityArray[voxelID] += pow(10.0, 6.0) * angle * angle / dL;
+        // Float_t dL = (Z_END - Z_START) / BIN_Z; //fPathArray[voxelID];
+        // Float_t dL = (fZf - fZi) / fNbinsZ; //fPathArray[voxelID];
+        // if (dL < 0.1)
+        //     dL = 0.1;
+        fDensityArray[voxelID] += pow(10.0, 6.0) * angle * angle / dZ();
     }
     else
         CalcPath(p1, q0, fPathArray);
 
     for (Int_t i = 0; i < fVoxelCount; i++)
-        if (fPathArray[i] > 0.1)
+    {
+        if (fPathArray[i] > 0.001 * dL())
             fMuCountArray[i]++;
-
+        // else if (fPathArray[i] != 0)
+        // {
+        //     cout << "dL: " << dL() << endl;
+        //     cout << "Test Path length: " << fPathArray[i] << endl;
+        // }
+    }
 
     return angle;
 }
@@ -283,17 +361,11 @@ PoCAManager *&PoCAManager::CurrentPoCAManager()
     return currentPoCAManager;
 }
 
-double PoCAManager::CalcPoCA(TVector3 &pPoCA, const TImagingData &posData)
-{
-    const TVector3 vPos[4]{posData.I1(), posData.I2(), posData.O1(), posData.O2()};
-    return CalcPoCA(pPoCA, vPos);
-}
-
-bool PoCAManager::WriteResult(TFile *file)
+TFile *PoCAManager::WriteResult(TFile *file)
 {
     if (!fDensityArray)
     {
-        return false;
+        return NULL;
     }
     if (file == NULL)
     {
@@ -301,26 +373,32 @@ bool PoCAManager::WriteResult(TFile *file)
     }
     auto hDensity = new TH3F("hDensity", "Density Distribution", fNbinsX, XMin(), XMax(), fNbinsY, YMin(), YMax(), fNbinsZ, ZMin(), ZMax());
     auto hMuon = new TH3I("hMuon", "Muon Count Distribution", fNbinsX, XMin(), XMax(), fNbinsY, YMin(), YMax(), fNbinsZ, ZMin(), ZMax());
+
     for (int i = 0; i < fVoxelCount; i++)
     {
         auto index = ConvertIndex(i);
+        cout << "x: " << index.X() << '\t' << "y: " << index.Y() << '\t' << "z: " << index.Z() << '\t' << fDensityArray[i] << '\t' << fMuCountArray[i] << endl;
+        double densityTemp = 0;
+        if (fMuCountArray[i] > 0)
+            densityTemp = fDensityArray[i] / fMuCountArray[i];
+        else
+            densityTemp = 0.0;
+
         hDensity->SetBinContent(index.X() + 1, index.Y() + 1, index.Z() + 1, fDensityArray[i]);
         hMuon->SetBinContent(index.X() + 1, index.Y() + 1, index.Z() + 1, fMuCountArray[i]);
     }
 
     hDensity->Write();
     hMuon->Write();
-    file->Close();
-    delete file;
 
-    return true;
+    return file;
 }
 
-bool PoCAManager::WritePath(TFile *file)
+TFile *PoCAManager::WritePath(TFile *file)
 {
     if (!fDensityArray)
     {
-        return false;
+        return NULL;
     }
     file->cd();
     auto hPath = new TH3F("hPath", "Path", fNbinsX, XMin(), XMax(), fNbinsY, YMin(), YMax(), fNbinsZ, ZMin(), ZMax());
@@ -331,7 +409,7 @@ bool PoCAManager::WritePath(TFile *file)
     }
     hPath->SetDirectory(file);
     hPath->Write();
-    return true;
+    return file;
 }
 
 Index3 PoCAManager::ConvertIndex(long arrayIndex)

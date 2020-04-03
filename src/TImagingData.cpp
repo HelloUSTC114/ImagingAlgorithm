@@ -1,4 +1,6 @@
 #include "TImagingData.h"
+#include "PoCA.h"
+
 using namespace TImagingType;
 
 ClassImp(TImagingData);
@@ -11,14 +13,76 @@ bool TImagingData::SetPoint(const TPreImagingDataPart &prei, const TPreImagingDa
 
 bool TImagingData::SetPoint(const Point2D &pxi1, const Point2D &pxi2, const Point2D &pxo1, const Point2D &pxo2, const Point2D &pyi1, const Point2D &pyi2, const Point2D &pyo1, const Point2D &pyo2)
 {
-     fPXI1 = pxi1;
-     fPXI2 = pxi2;
-     fPXO1 = pxo1;
-     fPXO2 = pxo2;
-     fPYI1 = pyi1;
-     fPYI2 = pyi2;
-     fPYO1 = pyo1;
-     fPYO2 = pyo2;
+     double z1 = pxi1.Y();
+     double z2 = pxi2.Y();
+     double z3 = pxo1.Y();
+     double z4 = pxo2.Y();
+
+     // Rearrange all detectors
+     if (z1 > z4)
+     {
+          if (z1 > z2)
+          {
+               fPXI1 = pxi1;
+               fPXI2 = pxi2;
+               fPYI1 = pyi1;
+               fPYI2 = pyi2;
+          }
+          else
+          {
+               fPXI1 = pxi2;
+               fPXI2 = pxi1;
+               fPYI1 = pyi2;
+               fPYI2 = pyi1;
+          }
+          if (z3 > z4)
+          {
+               fPXO1 = pxo1;
+               fPXO2 = pxo2;
+               fPYO1 = pyo1;
+               fPYO2 = pyo2;
+          }
+          else
+          {
+               fPXO1 = pxo2;
+               fPXO2 = pxo1;
+               fPYO1 = pyo2;
+               fPYO2 = pyo1;
+          }
+     }
+
+     if (z1 < z4)
+     {
+          if (z1 < z2)
+          {
+               fPXI1 = pxi1;
+               fPXI2 = pxi2;
+               fPYI1 = pyi1;
+               fPYI2 = pyi2;
+          }
+          else
+          {
+               fPXI1 = pxi2;
+               fPXI2 = pxi1;
+               fPYI1 = pyi2;
+               fPYI2 = pyi1;
+          }
+          if (z3 < z4)
+          {
+               fPXO1 = pxo1;
+               fPXO2 = pxo2;
+               fPYO1 = pyo1;
+               fPYO2 = pyo2;
+          }
+          else
+          {
+               fPXO1 = pxo2;
+               fPXO2 = pxo1;
+               fPYO1 = pyo2;
+               fPYO2 = pyo1;
+          }
+     }
+
      auto dataFlag = CheckPointData();
      if (!dataFlag)
      {
@@ -150,4 +214,130 @@ bool TPreImagingDataPart::SetPoint(const Point2D &x1, const Point2D &x2, const P
      fY1 = y1;
      fX2 = x2;
      fY2 = y2;
+}
+
+double TImagingDataProcessor::CalculatePathLength(const TImagingData &imageData, double z1, double z2, double zTargetZone)
+{
+     double dz1, dz2, dz3, dz4;
+     dz1 = imageData.I1().Z();
+     dz2 = imageData.I2().Z();
+     dz3 = imageData.O1().Z();
+     dz4 = imageData.O2().Z();
+
+     if (zTargetZone < TMath::Min(dz2, dz3) || zTargetZone > TMath::Max(dz2, dz3))
+     {
+          cout << "Error while input target zone. Set target zone automatically." << endl;
+          zTargetZone = (dz2 + dz3) / 2.0;
+     }
+
+     TVector3 pPoCA, pc, qc;
+     auto flag = PoCAManager::sCalcPoCA(pPoCA, pc, qc, imageData);
+     double length;
+
+     TVector3 zUnit = {0, 0, 1};
+
+     TVector3 line1;
+     TVector3 line2;
+     TVector3 pointOrigin1;
+     TVector3 pointOrigin2;
+     TVector3 pcut1;
+     TVector3 pcut2;
+
+     double zChange;
+
+     // if PoCA is calculated to be valid, then PoCA is change point; else point a change point (usually is set to be object region)
+     if (!flag)
+     {
+          zChange = zTargetZone;
+     }
+     else if (flag)
+     {
+          zChange = pPoCA.z();
+     }
+
+     if ((z1 - zChange) * (dz1 - zChange) >= 0)
+     {
+          line1 = imageData.I2() - imageData.I1();
+          line1 = line1.Unit();
+          pointOrigin1 = imageData.I2();
+          pcut1 = pc;
+     }
+     else
+     {
+          line1 = imageData.O2() - imageData.O1();
+          line1 = line1.Unit();
+          pointOrigin1 = imageData.O2();
+          pcut1 = qc;
+     }
+
+     if ((z2 - zChange) * (dz1 - zChange) >= 0)
+     {
+          line2 = imageData.I2() - imageData.I1();
+          line2 = line2.Unit();
+          pointOrigin2 = imageData.I2();
+          pcut2 = pc;
+     }
+     else
+     {
+          line2 = imageData.O2() - imageData.O1();
+          line2 = line2.Unit();
+          pointOrigin2 = imageData.O2();
+          pcut2 = qc;
+     }
+
+     // If PoCA is invalid, reset cut points
+     if (!flag)
+     {
+          pcut1 = pointOrigin1 + (zChange - pointOrigin1.Z()) / TMath::Abs(line1.Dot(zUnit)) * line1;
+          pcut2 = pointOrigin2 + (zChange - pointOrigin2.Z()) / TMath::Abs(line2.Dot(zUnit)) * line2;
+     }
+
+     TVector3 pz1 = pointOrigin1 + (z1 - pointOrigin1.Z()) / TMath::Abs(line1.Dot(zUnit)) * line1;
+     TVector3 pz2 = pointOrigin1 + (z2 - pointOrigin1.Z()) / TMath::Abs(line1.Dot(zUnit)) * line1;
+
+     // z1 and z2 are in the same side of PoCA
+     if ((z1 - pcut1.Z()) * (z2 - pcut2.Z()) >= 0)
+     {
+          length = (pz1 - pz2).Mag();
+     }
+     else
+     {
+          length = (pz1 - pcut1).Mag() + (pz2 - pcut2).Mag() + (pcut1 - pcut2).Mag();
+          // length = (pz1 - pcut1).Mag() + (pz2 - pcut2).Mag();
+          // length = (pz1 - pz2).Mag();
+     }
+
+
+     return length;
+}
+
+double TImagingDataProcessor::CalculateVelocity(const TImagingData &imageData, double z1, double z2, double zTargetZone, double t1, double t2)
+{
+     double length = CalculatePathLength(imageData, z1, z2, zTargetZone);
+     double dt = TMath::Abs(t1 - t2);
+     double v = TMath::Abs(length / dt);
+     return v;
+}
+
+double TImagingDataProcessor::CalculateGamma(const TImagingData &imageData, double z[4], double t[4], double zTargetZone, double &betaIn)
+{
+     double v1 = CalculateVelocity(imageData, z[0], z[2], zTargetZone, t[0], t[2]);
+     double v2 = CalculateVelocity(imageData, z[1], z[3], zTargetZone, t[1], t[3]);
+     double v3 = CalculateVelocity(imageData, z[0], z[3], zTargetZone, t[0], t[3]);
+
+     double vAve = (v1 + v2 + v3) / 3.0;
+     double beta = vAve * 1e7 / TMath::C();
+     betaIn = beta;
+     double gamma = 1.0 / TMath::Sqrt(1 - beta * beta);
+     return gamma;
+}
+
+double TImagingDataProcessor::CalculateGamma(const TImagingData &imageData, double t[4], double zTargetZone, double &betaIn)
+{
+     double z[4];
+     z[0] = imageData.I1().Z();
+     z[1] = imageData.I2().Z();
+     z[2] = imageData.O1().Z();
+     z[3] = imageData.O2().Z();
+     return CalculateGamma(imageData, z, t, zTargetZone, betaIn);
 }

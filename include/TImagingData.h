@@ -17,9 +17,17 @@ typedef TVector3 Vector3D;
 }; // namespace TImagingType
 using namespace std;
 
+class TDetectorData : public TObject
+{
+public:
+    TImagingType::Point2D x;
+    TImagingType::Point2D y;
+};
+
 class TPreImagingDataPart : public TObject
 {
 public:
+    TPreImagingDataPart() = default;
     TPreImagingDataPart(double x1, double hx1, double y1, double hy1, double x2, double hx2, double y2, double hy2);
     TPreImagingDataPart(const TImagingType::Point2D &x1, const TImagingType::Point2D &x2, const TImagingType::Point2D &y1, const TImagingType::Point2D &y2);
 
@@ -62,6 +70,16 @@ public:
     const TVector3 *q0() const { return &fP3O1; }
     const TVector3 *q1() const { return &fP3O2; }
 
+    const TVector2 &XI1() const { return fPXI1; }
+    const TVector2 &XI2() const { return fPXI2; }
+    const TVector2 &XO1() const { return fPXO1; }
+    const TVector2 &XO2() const { return fPXO2; }
+
+    const TVector2 &YI1() const { return fPYI1; }
+    const TVector2 &YI2() const { return fPYI2; }
+    const TVector2 &YO1() const { return fPYO1; }
+    const TVector2 &YO2() const { return fPYO2; }
+
 private:
     TImagingType::Point2D fPXI1; // In 1 X
     TImagingType::Point2D fPXI2; // In 2 X
@@ -82,9 +100,22 @@ private:
     ClassDef(TImagingData, 1);
 };
 
+namespace TImagingDataProcessor
+{
+// Calculate path length
+// Unit: cm
+double CalculatePathLength(const TImagingData &imageData, double z1, double z2, double zTargetZone);
+
+// Calculate velocity. z1, z2, t1, t2 is detected position, time information. t Unit: ns
+double CalculateVelocity(const TImagingData &imageData, double z1, double z2, double zTargetZone, double t1, double t2);
+double CalculateGamma(const TImagingData &imageData, double z[4], double t[4], double zTargetZone, double & betaIn);
+double CalculateGamma(const TImagingData &imageData, double t[4], double zTargetZone, double & betaIn);
+} // namespace TImagingDataProcessor
+
 #ifdef __ROOTCLING__
 #pragma link C++ class TImagingData;
 #pragma link C++ class TPreImagingDataPart;
+#pragma link C++ class TDetectorData;
 #endif
 
 #endif
