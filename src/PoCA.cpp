@@ -35,12 +35,12 @@ void PoCAManager::Clear()
 bool PoCAManager::Init(const POCAType::Point3 &pi, const POCAType::Point3 &pf, int nbinsX, int nbinsY, int nbinsZ)
 {
     Clear();
-    fXi = pi.X();
-    fYi = pi.Y();
-    fZi = pi.Z();
-    fXf = pf.X();
-    fYf = pf.Y();
-    fZf = pf.Z();
+    fXi = TMath::Min(pi.X(), pf.X());
+    fYi = TMath::Min(pi.Y(), pf.Y());
+    fZi = TMath::Min(pi.Z(), pf.Z());
+    fXf = TMath::Max(pi.X(), pf.X());
+    fYf = TMath::Max(pi.Y(), pf.Y());
+    fZf = TMath::Max(pi.Z(), pf.Z());
 
     fNbinsX = nbinsX;
     fNbinsY = nbinsY;
@@ -163,10 +163,10 @@ bool PoCAManager::CalcPath(const Point3 &pi, const Point3 &pf, float *ev_path)
     }
     for (int idxNow = min(idx_pi.Z(), idx_pf.Z()) + 1; idxNow <= max(idx_pi.Z(), idx_pf.Z()); idxNow++)
     {
-        float yNow = fZi + idxNow * dZ();
+        float zNow = fZi + idxNow * dZ();
         // 3D position for this voxel
         auto pTemp = new Point3;
-        *pTemp = (pi + (yNow - pi.Z()) / lineVec.Z() * lineVec);
+        *pTemp = (pi + (zNow - pi.Z()) / lineVec.Z() * lineVec);
         pNow = pTemp;
         mapNode[pNow->Z()] = pNow;
     }
@@ -184,7 +184,7 @@ bool PoCAManager::CalcPath(const Point3 &pi, const Point3 &pf, float *ev_path)
         voxelID = GetVoxelID(0.5 * (*pNow + *pNext));
         if (voxelID < 0)
             return false;
-        ev_path[voxelID] += (pNext->Z() - pNow->Z()) * lineVec.Z();
+        ev_path[voxelID] += TMath::Abs((pNext->Z() - pNow->Z()) / lineVec.Z());
         pNow = pNext;
     }
     for (auto itr = mapNode.begin(); itr != mapNode.end(); itr++)
@@ -307,18 +307,36 @@ double PoCAManager::CalcPoCA(TVector3 &pPoCA, const TVector3 *vPos)
         // p0.Print();
         // (((b * e - c * d) / (a * c - b * b)) * u).Print();
 
-        // If pc or qc or poca is outside valid zone, 
+        // If pc or qc or poca is outside valid zone,
         if (voxelID < 0 || GetVoxelID(pc) < 0 || GetVoxelID(qc) < 0)
             return -angle;
 
         CalcPath(p1, pc, fPathArray);
+        // cout << "End p1 pc" << endl
+        //  << endl;
+        // cout << "Start pc qc" << endl;
         CalcPath(pc, qc, fPathArray);
+        // cout << "End pc qc" << endl
+        //  << endl;
+        // cout << "Start qc q0" << endl;
         CalcPath(qc, q0, fPathArray);
+        // cout << endl;
 
         // Float_t dL = (Z_END - Z_START) / BIN_Z; //fPathArray[voxelID];
         // Float_t dL = (fZf - fZi) / fNbinsZ; //fPathArray[voxelID];
         // if (dL < 0.1)
         //     dL = 0.1;
+        if (fPathArray[voxelID] == 0)
+        {
+            return -angle;
+        }
+
+        // TVector3 lineTemp = p0 - q1;
+        // double path = (pc-qc).Mag();
+        // double path = TMath::Max((double)fPathArray[voxelID], 0.1 * dZ());
+        // fDensityArray[voxelID] += angle * angle / path;
+        // fDensityArray[voxelID] += angle * angle * TMath::Abs(lineTemp.Unit().Z());
+        // fDensityArray[voxelID] += pow(10.0, 6.0) * angle * angle / fPathArray[voxelID];
         fDensityArray[voxelID] += pow(10.0, 6.0) * angle * angle / dZ();
     }
     else
@@ -327,7 +345,10 @@ double PoCAManager::CalcPoCA(TVector3 &pPoCA, const TVector3 *vPos)
     for (Int_t i = 0; i < fVoxelCount; i++)
     {
         if (fPathArray[i] > 0.001 * dL())
+        {
             fMuCountArray[i]++;
+            // cout << "Path Length: " << fPathArray[i] << endl;
+        }
         // else if (fPathArray[i] != 0)
         // {
         //     cout << "dL: " << dL() << endl;
